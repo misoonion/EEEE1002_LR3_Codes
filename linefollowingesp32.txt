@@ -1,0 +1,258 @@
+#include <Wire.h>
+#include <ESP32Encoder.h>
+
+#define I2C_SLAVE_ADDR 0x22
+ // 4 in hexadecimal
+
+#define enA 33  // enableA command line
+#define enB 25  // enableB command line
+#define INa 26  // channel A direction
+#define INb 27  // channel A direction
+#define INc 14  // channel B direction
+#define INd 12  // channel B direction
+
+ESP32Encoder Enc1;
+ // create two encoder variable types
+ESP32Encoder Enc2;
+int16_t enc1Count = 0;
+ // create two signed encoder count variables of 16-bit size
+int16_t enc2Count = 0;
+const int freq = 2000;
+ // setting up the PWM properties used for the motors
+const int ledChannela = 0;
+  // assumed as the channel used for the left motor
+const int ledChannelb = 1;
+  // assumed as the channel used for the righteft motor
+const int resolution = 8;
+ // 8-bit PWM signal
+
+
+int servoPin = 13;
+  //the servo is attached to IO_13 on the ESP32
+int dutyCycle = 5;
+const int servoFrequency = 50;
+  // 50Hz signal
+const int servoChannel = 2;
+     // channels 0 and 1 are used for the two motors on your EEEBot
+const int servoResolution = 12;
+  // 12-bit PWM signal
+
+int16_t leftMotor_speed = 150;
+int16_t rightMotor_speed = 150;
+int16_t servoAngle = 90;
+int16_t regionCenter=0;
+int Kp = 0.55;
+ // Proportional gain
+int Ki = 0.000006;
+ // Integral gain
+int Kd = 0.00050;
+ // Derivative gain
+float Xpk = 0;
+ // Weighted Average
+float prevError = 0;
+float integral = 0;
+float error = 0;
+float u;
+float derivative = 0;
+
+
+
+
+void setup() {
+ // enable the weak pull up resistors for the two encoders
+ ESP32Encoder::useInternalWeakPullResistors=UP;
+
+
+ // attach the relevant pins to each encoder
+ Enc1.attachHalfQuad(34,35);
+ Enc2.attachHalfQuad(36,39);
+
+ // set the count of both encoders to 0
+ Enc1.setCount(0);
+ Enc2.setCount(0);
+
+ // configure the motor direction control pins as outputs
+ pinMode(INa, OUTPUT);
+ pinMode(INb, OUTPUT);
+ pinMode(INc, OUTPUT);
+ pinMode(INd, OUTPUT);
+ // pinMode(enA, OUTPUT);
+ // pinMode(enB, OUTPUT);  // if defining some pins as PWM, do not set them as OUTPUT!
+
+
+ // configure LED PWM functionalities
+ ledcSetup(ledChannela, freq, resolution);
+ ledcSetup(ledChannelb, freq, resolution);
+ ledcSetup(servoChannel, servoFrequency, servoResolution); //servo setup on PWM channel 2, 50Hz, 12-bit (0-4095)
+
+ // attach the channel to the GPIO to be controlled
+ ledcAttachPin(enA, ledChannela);
+ ledcAttachPin(enB, ledChannelb);
+ ledcAttachPin(servoPin, servoChannel);
+
+ Wire.begin(I2C_SLAVE_ADDR);
+   // join i2c bus #4 - on the ESP32 the default I2C pins are 21 (SDA) and 22 (SCL)
+ Wire.onReceive(onReceive);
+    // receive event
+ Wire.onRequest(onRequest);
+    // request event
+ 
+ Serial.begin(115200);
+             // start serial for the output
+ Serial.println("ESP32 Running");  // sanity check
+}
+
+void loop() {
+
+ // continuously 'get' the value from each encoder
+ enc1Count = Enc1.getCount();
+ enc2Count = Enc2.getCount();
+
+ derivative = 160 - regionCenter - error;
+ u = Kp * error + Ki * integral + Kd * derivative;
+ servoAngle = 90 - u; 
+
+ //Serial.print(servoAngle);
+ // can be uncommented for checking what values are returned
+ //Serial.print(enc1Count);
+ //Serial.print("\t");
+ // print a 'tab' space between values
+ //Serial.println(enc2Count);
+ delay(500);
+
+ servoAngle = constrain(servoAngle, 60, 180);
+ delay (500);
+
+}
+
+
+
+
+// this function executes when data is requested from the master device
+void onRequest(){
+ Wire.write((byte)((enc1Count & 0x0000FF00) >> 8));
+    // first byte of enc1Count, containing bits 16 to 9
+ Wire.write((byte)(enc1Count & 0x000000FF));  
+
+ Wire.write((byte)((enc2Count & 0x0000FF00) >>8));
+    // first byte of enc1Count, containing bits 16 to 9
+ Wire.write((byte)(enc2Count & 0x000000FF));  
+ 
+ Wire.write((byte)((regionCenter & 0x0000FF00) >> 8));
+    // first byte of enc1Count, containing bits 16 to 9
+ Wire.write((byte)(regionCenter & 0x000000FF));  
+  
+ //Wire.write((byte)((leftMotor_speed & 0x0000FF00) >> 8));    
+ // first byte of enc1Count, containing bits 16 to 9
+ //Wire.write((byte)(leftMotor_speed & 0x000000FF));           
+ // second byte of enc1Count, containing the 8 LSB - bits 8 to 1
+ //Wire.write((byte)((rightMotor_speed & 0x0000FF00) >> 8));    
+ // first byte of enc2Count, containing bits 16 to 9
+ //Wire.write((byte)(rightMotor_speed & 0x000000FF));           
+ // second byte of enc2Count, containing the 8 LSB - bits 8 to 1
+}
+
+
+void onReceive(int howMany) // this function executes whenever data is received from the master device
+{
+ if(howMany != 2){
+  // for 3 16-bit numbers, the data will be 6 bytes long - anything else is an error
+   emptyBuffer();
+   return;
+ }
+ //Serial.print("test");
+ /* uint8_t leftMotor_speed16_9 = Wire.read();  // receive bits 16 to 9 of x (one byte)
+ uint8_t leftMotor_speed8_1 = Wire.read();   // receive bits 8 to 1 of x (one byte)
+ uint8_t rightMotor_speed16_9 = Wire.read(); // receive bits 16 to 9 of y (one byte)
+ uint8_t rightMotor_speed8_1 = Wire.read();  // receive bits 8 to 1 of y (one byte)
+ uint8_t servoAngle16_9 = Wire.read();       // receive bits 16 to 9 of z (one byte)
+ uint8_t servoAngle8_1 = Wire.read();        // receive bits 8 to 1 of z (one byte)
+
+ leftMotor_speed = (leftMotor_speed16_9 << 8) | leftMotor_speed8_1;    
+ // combine the two bytes into a 16 bit number
+ */
+
+ uint8_t regionCenter16_9 = Wire.read();
+       // receive bits 16 to 9 of z (one byte)
+ uint8_t regionCenter8_1 = Wire.read();
+        // receive bits 8 to 1 of z (one byte) 
+ regionCenter = (regionCenter16_9 << 8) | regionCenter8_1;
+
+ /* Serial.print("Left Motor: ");   // verify that the correct values are received via the serial
+ monitor
+ Serial.print(leftMotor_speed);
+ Serial.print("\t");
+ Serial.print("Right Motor: ");
+ Serial.print(rightMotor_speed);
+ Serial.print("\t");
+ Serial.print("Servo: ");
+ Serial.println(servoAngle); */
+
+ Serial.print("Center:  ");
+ Serial.println(regionCenter);
+ setSteeringAngle(servoAngle);
+ runMotors(leftMotor_speed,
+ rightMotor_speed);
+}
+
+
+// function to clear the I2C buffer
+void emptyBuffer(void){
+ Serial.println("Error: I2C Byte Size Mismatch");
+ while(Wire.available())
+ {
+   Wire.read();
+ }
+}
+
+
+// function to set the steering angle
+void setSteeringAngle(int servoAngle){
+ dutyCycle = map((constrain(servoAngle, 0, 180)),0, 180, 205,410);
+ //constrain() limits the minimum and maximum values to 0 and 180 respectively, map() proportionally scales values between 0 and 180 to values between 205 (5% duty cycle) and 410 (10% duty cycle)
+ ledcWrite(servoChannel,  dutyCycle); // write the control signal to the PWM
+}
+
+
+void runMotors(int leftMotor_speed, int rightMotor_speed){
+ leftMotor_speed = constrain(leftMotor_speed,  -255, 255);
+ // limit speed so that it's between 0 and 255
+ rightMotor_speed = constrain(rightMotor_speed, -255, 255);
+
+ // vary the motor speeds - use the absolute value to remove the negative
+ ledcWrite(ledChannela,abs(leftMotor_speed));
+ ledcWrite(ledChannelb,abs(rightMotor_speed));
+
+ // if the speed value is negative, run the motor backwards
+ if
+ (leftMotor_speed < 0)
+ {
+   digitalWrite(INa, LOW);
+   digitalWrite(INb, HIGH);
+ }
+ // else, run the motor forwards
+ else
+ {
+   digitalWrite(INa, HIGH);
+   digitalWrite(INb, LOW);    
+ }
+
+
+ // if the speed value is negative, run the motor backwards
+ if
+ (rightMotor_speed < 0)
+ {
+   digitalWrite(INc, LOW);
+   digitalWrite(INd, HIGH);
+ }
+ // else run the motor forwards
+ else
+ {
+   digitalWrite(INc, HIGH);
+   digitalWrite(INd, LOW);    
+ }
+}
+
+
+
+

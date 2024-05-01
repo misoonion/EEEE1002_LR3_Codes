@@ -1,0 +1,141 @@
+#include <opencv2/opencv.hpp>
+#include <iostream>
+
+using namespace std;
+using namespace cv;
+
+int FindLargestAreaRed(Mat image)
+{
+    vector <vector<Point> > contours;
+    vector<Vec4i>hierarchy;
+    int largest_area = 0;
+    Mat image1;
+
+    cvtColor(image, image1, COLOR_BGR2HSV);
+    inRange(image1, Scalar(0, 90, 36), Scalar(14, 255, 255), image1);
+
+    findContours(image1, contours, hierarchy, RETR_TREE,CHAIN_APPROX_SIMPLE, Point(0,0));
+
+    if(contours.size() > 0)
+    {
+        for(int i=0;i<contours.size();i++)
+        {
+            int area = contourArea(contours[i]);
+            if(area > largest_area){
+                largest_area = area;}
+        }
+    }
+
+    return largest_area;
+}
+
+int FindLargestAreaBlue(Mat image)
+{
+    vector <vector<Point> > contours;
+    vector<Vec4i>hierarchy;
+    int largest_area = 0;
+    Mat image1;
+
+    cvtColor(image, image1, COLOR_BGR2HSV);
+    inRange(image1, Scalar(85, 95, 0), Scalar(149, 255, 255), image1);
+
+    findContours(image1, contours, hierarchy, RETR_TREE,CHAIN_APPROX_SIMPLE, Point(0,0));
+
+    if(contours.size() > 0)
+    {
+        for(int i=0;i<contours.size();i++)
+        {
+            int area = contourArea(contours[i]);
+            if(area > largest_area){
+                largest_area = area;}
+        }
+    }
+
+    return largest_area;
+}
+
+int FindLargestAreaGreen(Mat image)
+{
+    vector <vector<Point> > contours;
+    vector<Vec4i>hierarchy;
+    int largest_area = 0;
+    Mat image1;
+
+    cvtColor(image, image1, COLOR_BGR2HSV);
+    inRange(image1, Scalar(28, 130, 0), Scalar(75, 255, 255), image1);
+
+    findContours(image1, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE, Point(0,0));
+
+    if(contours.size() > 0)
+    {
+        for(int i=0;i<contours.size();i++)
+        {
+            int area = contourArea(contours[i]);
+            if(area > largest_area){
+                largest_area = area;}
+        }
+    }
+
+    return largest_area;
+}
+
+
+int main()
+{
+    namedWindow("Image");
+    Mat image = imread("GreenCar.bmp");
+    Mat blurred;
+    if (image.data == NULL) //error checking in case the image is invalid
+    {
+        cout << "No image found! Check path." << endl;
+        return 1;   //ERROR
+    }
+    else
+    {
+
+        float area[3];
+        imshow("Image", image);
+        blur(image, blurred, Point(5, 5));
+
+        //float area[3];
+        area[0] = FindLargestAreaRed(blurred); //returns largest area of red, blue or green in each photo
+        area[1] = FindLargestAreaBlue(blurred);
+        area[2] = FindLargestAreaGreen(blurred);
+
+        float c = 0;
+        int area_idx;
+        for(int i=0; i<3; i++) //finds the largest value between the three returned
+        {
+            if(area[i] > c){
+                c = area[i];
+                area_idx = i;}
+        }
+
+
+        switch(area_idx){
+        case(0):
+            cout << "Red" << endl; break;
+
+        case(1):
+            cout << "Blue" << endl; break;
+
+        case(2):
+            cout << "Green" << endl; break;
+
+        }
+
+        while(1){
+            imshow("Image", image);
+            int key = cv::waitKey(1);   // Wait 1ms for a keypress (required to update windows
+
+            key = (key==255) ? -1 : key;    // Check if the esc key has been pressed
+            if (key == 27)
+                break;
+        }
+
+        return 0;
+
+    }
+
+}
+

@@ -1,0 +1,269 @@
+#include <Wire.h> 
+#include <Keypad.h>
+#include "LiquidCrystal.h"  //display libary
+#include <DistanceSensor.h>
+//distance sensor libary
+
+const byte ROWS = 4; //four rows
+const byte COLS = 3; //three columns
+
+char keys[ROWS][COLS] = {
+
+  {'1','2','3'},
+
+  {'4','5','6'},
+
+  {'7','8','9'},
+
+  {'*','0','#'}
+
+};
+
+byte rowPins[ROWS] = {15,4,16,17}; //connect to the row pinouts of the keypad
+byte colPins[COLS] = {5,18,19}; //connect to the column pinouts of the keypad
+
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS );
+
+// Create an LCD object. Parameters: (RS, E, D4, D5, D6, D7):
+LiquidCrystal lcd = LiquidCrystal(12,14,26,25,33,32);
+
+//distance sensor
+const int echoPin = 13;
+const int trigPin = 27;
+
+// Start the sensor
+DistanceSensor sensor(trigPin, echoPin);
+
+//recieved message
+String message = "";
+bool message_flag = false;
+
+// output stuff
+int pos = 0;
+int messagePos = 0;
+char outputList[40] = {0};
+ //message sent to other esp32
+
+char outputMessage[60] = {0};
+int frontDistance;
+int listSent;
+int taskFinished;
+
+
+void keyCheckStraight(char key, char targetKey, char outputKey){
+
+  if (key == targetKey){
+    outputList[pos] = key;
+    outputMessage[messagePos] = outputKey;
+    messagePos = messagePos + 1;
+    outputMessage[messagePos] = 'F';
+    messagePos = messagePos + 1;
+    pos = pos +1;
+    Serial.printf(outputList);
+    Serial.printf("\n");
+  }
+}
+
+void keyCheckTurn(char key, char targetKey, char outputKey){
+
+  if (key == targetKey){
+    Serial.printf("key %c\n",key);
+    outputList[pos] = key;
+    outputMessage[messagePos] = outputKey;
+    pos = pos +1;
+    messagePos = messagePos + 1;
+
+    //Serial.printf(outputList);
+    //Serial.printf("\n");
+  }
+}
+
+void sendKey(char key, char targetKey, char outputKey){
+
+  if (key == targetKey){
+    Serial.printf("key%c\n",key);
+    outputList[pos] = key;
+    outputMessage[messagePos] = outputKey;
+    pos = pos + 1;
+    messagePos = messagePos + 1;
+    Serial.printf("list sent to esp32: ");
+    Serial.printf(outputList);
+    Serial.printf("\n");
+    Serial.printf("list sent to LCD: ");
+    Serial.printf(outputMessage);
+    Serial.printf("\n");
+    Wire.beginTransmission(0x08);
+    // transmit to slave device address 8, the mainboard ESP32
+
+    Wire.write(outputList);
+    // send five bytes, one for each character
+
+    Wire.endTransmission();
+    // end transmission
+
+    listSent = 1;
+
+    Serial.printf("listSent%d\n",listSent);
+    delay(500);
+  }
+}
+
+void clearKey(char key, char targetKey){
+
+  if (key == targetKey){
+    Serial.printf("key %c\n",key);
+    for (int i =0;i < pos; i ++){
+      outputList[i] = '0';
+    }
+    for (int j =0; j < messagePos; j ++){
+      outputMessage[j] = ' ';
+    }
+
+    Serial.printf("clear list\n");
+    // resest values
+
+    pos = 0;
+    messagePos = 0;
+  }
+}
+
+//distance sensor 
+int getFrontDistance(){
+  // Get distance in cm
+  int frontDistance = sensor.getCM();
+  //Write values to serial port
+  //Serial.print("Distance: ");
+  //Serial.print(frontDistance);
+  //Serial.println("cm");
+  //delay(500);
+  return frontDistance;
+}
+
+void sendFrontDistance(int frontDistance){
+
+  char frontDistanceChar[3];
+  Serial.printf("int frontDistance: %d\n",frontDistance);
+  sprintf(frontDistanceChar,"%d",frontDistance); //converts int -> char
+  Serial.printf("char  frontDistance: %s\n",frontDistanceChar);
+  Wire.beginTransmission(0x08);
+ // transmit to slave device address 8
+
+  Wire.write(frontDistanceChar);
+          // send five bytes, one for each character has to be a char
+
+  Wire.endTransmission();
+       // end transmission
+}
+
+void clearAll(char key, char targetKey){
+  if (key == targetKey){
+    Serial.printf("key  %c\n",key);
+    for (int i =0; i < 59; i ++){
+      outputList[i] = '0';
+    }
+
+    for (int j =0; j < 59; j ++){
+      outputMessage[j] = ' ';
+    }
+    Serial.printf("clear list for startup\n");
+    // resest values
+
+    pos = 0;
+    messagePos = 0;
+  }
+
+}
+
+void recieveMessage(){
+
+  Wire.requestFrom(0x08,5);    // request 5 bytes from slave device #8
+
+  while (Wire.available()){    // loop whilst slave sends data
+    // i.e. whilst bus is busy
+    char c = Wire.read();
+    // receive data byte by byte
+    message += c;               // form complete string
+    message_flag = true;         // set true to indicate message received
+  }
+
+  if (message_flag ==true) {
+    Serial.println (message);
+    message = "";
+    message_flag = false;
+    taskFinished = 1;
+  }
+  Serial.printf("Task finished\n");
+
+}
+
+void setup(){
+  // Specify the LCD's number of columns and rows. Change to (20, 4) for a 20x4 LCD:
+  lcd.begin(16, 2);
+  Serial.begin(9600);
+ //output
+  Wire.begin();
+       // join i2c bus (address optional for master)
+
+  clearAll('0','0');
+
+}
+
+void loop(){  
+  if(listSent == 0){
+    char key = keypad.getKey();
+    //key stuff
+
+    keyCheckStraight(key,'1','1');
+
+    keyCheckStraight(key,'2','2');
+
+    keyCheckStraight(key,'3','3');
+
+    keyCheckStraight(key,'4','4');
+
+    keyCheckStraight(key,'5','5');
+
+    keyCheckStraight(key,'6','6');
+
+    keyCheckTurn(key,'7','L');
+
+    keyCheckTurn(key,'8','U');
+
+    keyCheckTurn(key,'9','R');
+
+    sendKey(key,'#','#');
+
+    clearKey(key,'0');
+    //check
+
+    Serial.printf(outputList);
+    Serial.printf("\n");
+    Serial.printf(outputMessage);
+    Serial.printf("\n");
+
+    //display stuff
+
+    lcd.setCursor(0,0);
+    lcd.print(outputMessage);
+    lcd.setCursor(0,1);
+
+    for (int i=16;i<33;i++){
+      lcd.print(outputMessage[i]);
+    }
+    //Serial.printf("running\n");
+  }
+
+  //distance sensor stuff
+
+  if(listSent == 1 && taskFinished == 0){
+
+    //distance sensor 
+    frontDistance = getFrontDistance();
+    //Serial.printf("frontDistance %d\n",frontDistance);
+    sendFrontDistance(frontDistance);
+    //recieveMessage();
+  }
+
+  //Serial.printf("list sent %d \n",listSent); //if list sent 1 adn task finished =1 no more program
+
+}

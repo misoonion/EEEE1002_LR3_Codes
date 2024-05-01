@@ -1,0 +1,188 @@
+// Include files for required libraries
+#include <stdio.h>
+
+#include "opencv_aee.hpp"
+#include "main.hpp"     // You can use this file for declaring defined values and functions
+#include "pi2c.h"
+
+Pi2c car(0x22); // Configure the I2C interface to the Car as a global variable
+using namespace cv;
+using namespace std;
+
+int IdentifySymbol(Mat frame1)
+{
+  //loads symbols from folder and compares captured symbol to them
+  int lowH = 79, highH = 179, lowS = 25, highS = 255, lowV = 15, highV = 255;
+  int match[4], limit = 65;
+
+  Mat circle = imread("Circle.png");
+  resize(circle, circle, Size(320, 240), INTER_LINEAR);
+  cvtColor(circle, circle, COLOR_BGR2HSV);
+  inRange(circle, Scalar(lowH, lowS, lowV), Scalar(highH, highS, highV), circle);
+
+  Mat triangle = imread("Triangle.png");
+  resize(triangle, triangle, Size(320, 240), INTER_LINEAR);
+  cvtColor(triangle, triangle, COLOR_BGR2HSV);
+  inRange(triangle, Scalar(lowH, lowS, lowV), Scalar(highH, highS, highV), triangle);
+
+  Mat umbrella = imread("Umbrella.png");
+  resize(umbrella, umbrella, Size(320, 240), INTER_LINEAR);
+  cvtColor(umbrella, umbrella, COLOR_BGR2HSV);
+  inRange(umbrella, Scalar(lowH, lowS, lowV), Scalar(highH, highS, highV), umbrella);
+
+  Mat star = imread("Star.png");
+  resize(star, star, Size(320, 240), INTER_LINEAR);
+  cvtColor(star, star, COLOR_BGR2HSV);
+  inRange(star, Scalar(lowH, lowS, lowV), Scalar(highH, highS, highV),star);
+
+  int symbol = 0;
+  match[0] = compareImages(frame1, circle);
+  match[1] = compareImages(frame1, triangle);
+  match[2] = compareImages(frame1, umbrella);
+  match[3] = compareImages(frame1, star);
+	
+	int a = 0;
+	for(i=0;i<4;i++)
+	{
+		if(match[i] > a){
+			a = match[i];
+			symbol = i+1;}
+	}
+
+	if(match[symbol - 1] < limit){
+		symbol = 0;}
+
+        return symbol;
+}
+
+Mat SymbolRecognition(Mat frame)
+{
+  Mat frame1, transformd;
+  int lowH = 90, highH = 179, lowS = 25, highS = 255, lowV = 15, highV = 255;
+  int contour_index = 0, largest_area = 0;
+
+  vector <vector<Point>>contours;
+  vector<Vec4i>hierarchy;
+
+  blur(frame, frame, Size(3, 3)); // apply blur to original image
+  cvtColor(frame, frame1, COLOR_BGR2HSV);
+  inRange(frame1, Scalar(lowH, lowS, lowV), Scalar(highH, highS, highV), frame1);
+  //Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(5, 5));
+  //morphologyEx(frame1, frame1, MORPH_OPEN, kernel);
+
+  findContours(frame1, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE, Point(0,0));
+
+  if(contours.size() > 0)
+  {
+    //cout<<"Finding contour..."<<endl;
+    vector< vector<Point> > approxedcontours(contours.size()); //Array for new contours
+    //vector< vector<Point> > hull(contours.size());
+    for(int i = 0; i < contours.size(); i++)
+    {            
+      approxPolyDP(contours[i],approxedcontours[i], 10, true);
+      //Approximate the contour
+
+      int area = contourArea(contours[i]);
+      if(area > largest_area){
+      largest_area = area;
+      contour_index=i;}
+    }
+    drawContours(frame, approxedcontours, contour_index, Scalar(0,255,255), 2, LINE_8, hierarchy, 0);
+
+    if(approxedcontours[contour_index].size() == 4)	{
+      //namedWindow("Transformed"); 
+      transformd = transformPerspective(approxedcontours[contour_index], frame1, 320, 240);
+      //imshow("Transformed", transformd); 
+      cout<<"Transformed!"<<endl;
+
+      int symbol = IdentifySymbol(transformd);
+
+	    switch(symbol){ 
+	   //Displays the symbol being detected. This used to be in the Identify
+	   //Symbol function but when merging the line following code with the symbol
+	   //recognition code I thought the integer returned would be useful to me in this function
+
+        case 0:
+        cout<<"No symbol found"<<endl; break;
+
+        case 1:
+        cout<<"\t\t\t\tCircle"<<endl; break; 
+
+        case 2:
+        cout<<"\t\t\t\tTriangle"<<endl; break;
+
+        case 3:
+        cout<<"\t\t\t\tUmbrella"<<endl; break;
+
+        case 4:
+        cout<<"\t\t\t\tStar"<<endl; break;
+        }
+    }
+
+    return frame1;
+}
+
+void setup(void)
+{
+    setupCamera(320, 240);  // Enable the camera for OpenCV
+}
+
+int main( int argc, char** argv )
+{
+  setup();    // Call a setup function to prepare IO and devices
+
+  namedWindow("Photo");   // Create a GUI window called photo
+  namedWindow("Line");
+
+  while(1)    // Main loop to perform image processing
+  {
+    Mat frame, frame1;
+    //int largest_area = 0, contour_index=0;
+
+    while(frame.empty())
+      frame = captureFrame(); // Capture a frame from the camera and store in a new matrix variable
+      /*
+      vector <vector<Point>>contours;
+      vector<Vec4i>hierarchy;
+      cvtColor(frame, frame1, COLOR_BGR2HSV);
+      inRange(frame1, Scalar(0, 72, 0), Scalar(255, 255, 152), frame1);
+
+      findContours(frame1, contours, hierarchy, RETR_TREE,CHAIN_APPROX_SIMPLE, Point(0,0));
+
+      if(contours.size() > 0)
+      {
+        for(int i=0;i<contours.size();i++)
+        {
+          int area = contourArea(contours[i]);
+          if(area > largest_area){
+            largest_area = area;
+            contour_index=i;}
+        }
+
+        drawContours(frame, contours, contour_index, Scalar(0,0,255), 2, LINE_8, hierarchy, 0);
+
+        Point regionCenter = findContourCentre(contours[contour_index]);
+        printf("Contour centre: x = %dpx, y = %dpx\n", regionCenter.x, regionCenter.y);
+
+        char test[2];
+        test[0] = (regionCenter.x >>8) & 0xFF;
+        test[1] = regionCenter.y & 0xFF;
+        car.i2cWrite(test, 2);
+      }
+        */
+      frame1 = SymbolRecognition(frame);
+
+      imshow("Photo", frame); //Display the image in the window
+      imshow("Line", frame1);
+
+      int key = waitKey(1);   // Wait 1ms for a keypress (required to update windows)
+
+      key = (key==255) ? -1 : key;    // Check if the ESC key has been pressed
+      if (key == 27)
+        break;
+	}
+
+	closeCV();  // Disable the camera and close any windows
+
+	return 0;
+}

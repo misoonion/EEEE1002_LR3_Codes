@@ -1,0 +1,357 @@
+
+#include <Wire.h>        // include Wire library
+#include <ESP32Encoder.h>
+
+String message;
+
+// servo setup
+int servoPin = 13;  // the servo is attached to IO_13 on the ESP32
+const int servoFrequency = 50;  // 50Hz signal
+const int servoChannel = 2;     // channels 0 and 1 are used for the two motors on your EEEBot 
+const int servoResolution = 12;  // 12-bit PWM signal
+int steeringAngle = 90; //0 left 90 straight 180 right
+
+
+//encoder setup
+#define enA 33  //EnableA command line
+#define enB 25  //EnableA command line
+
+#define INa 26  //Channel A Direction
+#define INb 27  //Channel A Direction
+#define INc 14  //Channel B Direction
+#define INd 12  //Channel B Direction
+
+
+const int freq = 30000;
+const int pwmChannel = 0;
+const int resolution = 8;
+int dutyCycle = 180;
+
+float noCountTenCM = 6; //round(1 / distancePerRotation); 1 meter is 241
+
+ESP32Encoder encoder;
+ESP32Encoder encoder2;
+
+int64_t encoder1_value = encoder.getCount();
+int64_t encoder2_value = encoder2.getCount() * -1;
+
+int64_t averageEncoders = (encoder1_value + encoder2_value)/2;
+int repeatTrue = 0;
+
+//codey code
+int getSizeOfMessage(const char* message){
+
+  int sizeOfMessage;
+
+  sizeOfMessage = strlen(message);
+
+  if (sizeOfMessage >0){
+
+    Serial.printf("Message is %d big\n",sizeOfMessage);
+
+  }
+
+  return sizeOfMessage;
+}
+
+
+char getKeyi(const char* message,int sizeOfMessage,int i){
+  char key;
+  key = message[i];
+
+  if (key !='0'){
+
+    Serial.printf("// key %c\n",key); //check
+  }
+
+  return key;
+
+}
+
+
+void getSteeringAngleOfKey(char key,char targetKey,int newSteeringAngle,int delayTime){
+
+  //int steeringAngle;
+  //Serial.printf("key %c | targetKey %c\n",key,targetKey);
+
+  if (key == targetKey){
+
+    //Serial.printf("Match\n");
+    //steeringAngle = newSteeringAngle;
+
+    Serial.printf("key %c %d ",key, steeringAngle);
+    Serial.printf("steeringAngle: %d ",steeringAngle);
+    Serial.printf("newSteeringAngle: %d\n",newSteeringAngle);
+
+    dutyCycle = map((constrain(newSteeringAngle ,0, 180)),0,180,205,410); 
+    // contrain() limits the minimum and maximum values to 0 and 180 respectively, map() proportionally scales
+    //values between 0 and 180 to values between 205 (5% duty cycle) and 410 (10% duty cycle)
+
+    ledcWrite(servoChannel, dutyCycle); // write the control signal to the PWM
+    delay(delayTime); //can remove the delay and use motors instead
+  }
+  //return newSteeringAngle;
+
+}
+
+//motors stuff
+
+void MoveBot() {
+
+    digitalWrite(INa, HIGH);
+    digitalWrite(INb, LOW);
+    digitalWrite(INc, HIGH);
+    digitalWrite(INd, LOW);
+}
+
+void StopBot() {
+
+    digitalWrite(INa, LOW); //set low to stop
+    digitalWrite(INb, LOW);
+    digitalWrite(INc, LOW); //set low to stop
+    digitalWrite(INd, LOW);
+
+}
+
+void broomBroom(float encoderTargetValue){
+
+  int dutyCycle = 220; //speeed
+  float targetCount;
+
+  Serial.printf("broom broom\n"); //check
+
+  //check encoders before going into loop
+  int64_t encoder1_value = encoder.getCount();
+  int64_t encoder2_value = encoder2.getCount() * -1;
+
+  int avgEncoders = (encoder1_value + encoder2_value)/2;
+  //so can be printed same as above statement
+
+  targetCount =  encoderTargetValue + avgEncoders;
+
+  Serial.printf("avgEncoder count start %d | target count %f\n",avgEncoders,targetCount);
+  repeatTrue = 0;
+
+  while (repeatTrue == 0)
+ {
+    Serial.printf("loop looping\n");
+
+    int64_t encoder1_value = encoder.getCount();
+    int64_t encoder2_value = encoder2.getCount() * -1;
+    int64_t averageEncoders = (encoder1_value + encoder2_value)/2;
+    //int64 is stroage type //encoder 2 gives negative values 
+
+    int avgEncoders = (encoder1_value + encoder2_value)/2;
+    //so can be printed same as above statement
+
+    
+    // Set motor speed
+    ledcWrite(pwmChannel, dutyCycle);
+
+    //float TenMCount = 24008;
+
+    if((int64_t)averageEncoders <= targetCount) {
+
+      // Move the DC motor forward at maximum speed
+      Serial.println("Bot Moving");
+      MoveBot();
+
+    } 
+
+    else {
+      // Stop the DC motor
+      Serial.println("Bot Stop");
+      StopBot();
+      repeatTrue = 1;
+    } 
+    Serial.printf("avgEncoder count: %d | targetCount %f\nnenc1: %jd | enc2 is: %jd\n", avgEncoders,targetCount, encoder1_value, encoder2_value);
+
+  }
+  Serial.printf("end of broomBroom\n");
+
+}
+
+float getEncoderValue(char key, char targetKey, float encoderKeyValue){
+
+  float encoderValue = 0;
+  if (key == targetKey){
+    encoderValue = encoderKeyValue;
+  }
+
+  else{
+    encoderValue = 0;
+
+  }
+
+  return encoderValue;
+
+}
+
+float getTotalEncoderTargetValue(char key,float oneBotLength,float timeForTurn){
+
+  float totalEncoderValue;
+
+  float Key1EncValue, Key2EncValue, Key3EncValue, Key4EncValue, Key5EncValue, Key6EncValue, Key7EncValue, Key8EncValue, Key9EncValue;
+
+  Key1EncValue = getEncoderValue(key,'1',oneBotLength);
+
+  Key2EncValue = getEncoderValue(key,'2',2*oneBotLength);
+
+  Key3EncValue = getEncoderValue(key,'3',3*oneBotLength);
+
+  Key4EncValue = getEncoderValue(key,'4',4*oneBotLength);
+
+  Key5EncValue = getEncoderValue(key,'5',5*oneBotLength);
+
+  Key6EncValue = getEncoderValue(key,'6',6*oneBotLength);
+
+  //CHANGE ME
+  Key7EncValue = getEncoderValue(key,'7',timeForTurn); //CHANGE ME value is just a guess Left turn
+
+  Key8EncValue = getEncoderValue(key,'8',2*timeForTurn);// right 180
+
+  Key9EncValue = getEncoderValue(key,'9',timeForTurn); //right turn
+
+  totalEncoderValue = Key1EncValue + Key2EncValue + Key3EncValue + Key4EncValue + Key5EncValue + Key6EncValue + Key7EncValue + Key8EncValue + Key9EncValue;
+
+  Serial.printf("totalEncoderValue: %f\n",totalEncoderValue);
+
+  return totalEncoderValue;
+}
+
+
+void stopTheBot(char key, char exitKey){
+
+  //function not used
+  if (key == exitKey){
+
+    Serial.printf("Stop\n");
+    //temporary measure to get code to stop
+
+    StopBot();
+    delay(10000);
+
+  }
+
+  else{
+
+    Serial.printf("keep running\n");
+
+  }
+
+}
+
+void receiveEvent(int howMany){
+
+  Serial.printf("/////////////////////////////////\n");
+
+  message = "";
+
+  while (Wire.available()){
+  // loop whilst bus is busy
+
+    char c = Wire.read();     //
+ receive data byte by byte
+
+    message += c;             // form complete string
+
+  }
+
+  Serial.println(message);
+    // write string to serial monitor
+
+  //outputLoop(message.c_str());
+  //delay(500);
+
+  Serial.printf("End");
+
+} 
+
+void setup(){
+
+  //slave master setup
+  Wire.begin(0x08); // join i2c bus with address 8
+  
+  //code setup
+  Serial.begin(9600); // start serial to visualise data 
+
+  //servo setup
+  ledcSetup(servoChannel, servoFrequency, servoResolution); // servo setup on PWM channel 2, 50Hz, 12-bit (0-4095)
+
+  ledcAttachPin(servoPin, servoChannel);  // attach the channel to the GPIO to be controlled
+
+  //motors setup
+  // sets the pins as outputs:
+  pinMode(INa, OUTPUT);
+  pinMode(INb, OUTPUT);
+  pinMode(INc, OUTPUT);
+  pinMode(INd, OUTPUT);
+
+  // configure LED PWM functionalitites
+  ledcSetup(pwmChannel, freq, resolution);
+
+  // attach the channel to the GPIO to be controlled
+  ledcAttachPin(enA, pwmChannel);
+  ledcAttachPin(enB, pwmChannel); // testing
+
+  Serial.print("Testing DC Motor..."); // attach encoder to pins
+  encoder.attachHalfQuad(36,39);
+  encoder2.attachHalfQuad(34,35);
+  encoder.clearCount();
+  encoder2.clearCount();
+}
+
+
+
+
+void loop() {
+
+  //Serial.printf("running\n");
+  Wire.onReceive(receiveEvent);
+  // create a receive event
+
+  char key;
+  int sizeOfMessage;
+  float encoderTargetValue;
+  float finalEncoderTargetValue;
+  sizeOfMessage = getSizeOfMessage(message.c_str());
+  //have to turn the message from string string to char string
+
+  //loop through the message
+  for (int i =0;i<sizeOfMessage; i++){
+
+    key = getKeyi(message.c_str(),sizeOfMessage,i); //get encoder value
+
+    encoderTargetValue = getTotalEncoderTargetValue(key,20,86);
+    //(key,one foam box length or 10cm, time to do 90 degree turn) //10cm = 6 
+
+    //straight forward
+    getSteeringAngleOfKey(key,'1',96,0); //have to define 1 as '1' so is a char and not an int
+
+    getSteeringAngleOfKey(key,'2',96,0); //(key,targetKet,servo angle, delay)
+
+    getSteeringAngleOfKey(key,'3',96,0);
+
+    getSteeringAngleOfKey(key,'4',96,0);
+
+    getSteeringAngleOfKey(key,'5',96,0);
+
+    getSteeringAngleOfKey(key,'6',96,0);  //turn keys
+
+    getSteeringAngleOfKey(key,'7',0,400); //0 left
+
+    getSteeringAngleOfKey(key,'8',180,800);//180 right
+
+    getSteeringAngleOfKey(key,'9',180,400);//90 right
+
+    //motor stuff
+    broomBroom(encoderTargetValue); //stops EEEBot when target encoder value reached
+
+    getSteeringAngleOfKey(key,'#',90,400);//adjust servo back to front facing
+
+    stopTheBot(key,'#');
+
+  }
+
+}
+
